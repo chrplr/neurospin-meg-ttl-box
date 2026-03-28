@@ -48,6 +48,46 @@ Otherwise, download a pre-built binary for your platform from the [GitHub Releas
 
 Make it executable (Linux/macOS: `chmod +x ttlbox-*`) and place it somewhere on your `PATH`.
 
+## Finding the serial port
+
+Once the CLI is installed, the easiest way is:
+
+```bash
+ttlbox ports
+```
+
+This lists all detected serial ports. Plug the Arduino in, run it again, and the new entry is your device.
+
+If the CLI is not yet available, use the OS-native method below.
+
+**Linux**
+
+Watch kernel messages while plugging the Arduino in:
+
+```bash
+sudo dmesg -w
+```
+
+Look for a line like `cdc_acm ... ttyACM0: USB ACM device`. The port will be `/dev/ttyACM0` (or `ttyACM1`, etc.). You can also list candidate devices directly:
+
+```bash
+ls /dev/ttyACM* /dev/ttyUSB*
+```
+
+> If you get a "permission denied" error when opening the port, add yourself to the `dialout` group: `sudo usermod -aG dialout $USER` (then log out and back in).
+
+**macOS**
+
+```bash
+ls /dev/cu.*
+```
+
+An Arduino Mega typically appears as `/dev/cu.usbmodem<number>` (native USB) or `/dev/cu.usbserial-<number>` (FTDI chip). Plug and unplug to identify the right entry.
+
+**Windows**
+
+Open **Device Manager** (Win + X → Device Manager) and expand **Ports (COM & LPT)**. The Arduino will appear as `USB Serial Device (COMx)` or `Arduino Mega 2560 (COMx)`. Use `COMx` as the port value, e.g. `--port COM3`.
+
 ## Library usage
 
 ```go
