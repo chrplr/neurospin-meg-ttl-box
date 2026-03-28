@@ -47,8 +47,8 @@ Otherwise, download a pre-built binary for your platform from the [GitHub Releas
 Make it executable (Linux/macOS: `chmod +x ttlbox-*`) and place it somewhere on your `PATH`.
 
 > [!WARNING]
-> If  Windows Deender or macOS Getkeeper tells you that the binary is damaged or a dangerous, do not believe it and go ahead.
-> Under macOS, use `xattr -d com.apple.quarantine ./ttbox-*` then `chmod +x ttlbox*`. 
+> If  Windows Defender or macOS Getkeeper pretend that the binary is damaged or a dangerous, go ahead anyway.
+> Under macOS, you may have to use `xattr -d com.apple.quarantine ./ttbox-*` then `chmod +x ttlbox*`. 
 
 ## Finding the serial port
 
