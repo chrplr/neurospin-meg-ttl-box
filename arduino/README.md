@@ -2,6 +2,9 @@
 
 This directory contains the Arduino firmware for the USB-to-TTL interface used in MEG experiments at NeuroSpin.
 
+> [!NOTE]
+> The ttl-box and its Python API were designed and implemented by [Mirian Aïnar](https://www.linkedin.com/in/mirian-ainar/) under the supervision of [Christophe Pallier](http://www.pallier.org) and with technical support from Marie-France Fourcade and Jérémy Bernardi (CEA Neurospin). 
+
 ## Hardware
 
 **Board:** Arduino Mega 2560

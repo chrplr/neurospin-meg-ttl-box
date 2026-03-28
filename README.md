@@ -21,15 +21,32 @@ See [`arduino/README.md`](arduino/README.md) for hardware setup, pin mapping, an
 
 ## Installation
 
+### Library (for Go projects)
+
 ```bash
 go get github.com/neurospin/neurospin-meg-ttl-box
 ```
 
-To install the CLI:
+### CLI (`ttlbox`)
+
+If you have Go installed:
 
 ```bash
 go install github.com/neurospin/neurospin-meg-ttl-box/cmd/ttlbox@latest
 ```
+
+Otherwise, download a pre-built binary for your platform from the [GitHub Releases page](../../releases/latest):
+
+| OS | Architecture | File |
+|---|---|---|
+| Linux | x86-64 | `ttlbox-linux-amd64` |
+| Linux | ARM64 | `ttlbox-linux-arm64` |
+| macOS | x86-64 (Intel) | `ttlbox-macos-amd64` |
+| macOS | ARM64 (Apple Silicon) | `ttlbox-macos-arm64` |
+| Windows | x86-64 | `ttlbox-windows-amd64.exe` |
+| Windows | ARM64 | `ttlbox-windows-arm64.exe` |
+
+Make it executable (Linux/macOS: `chmod +x ttlbox-*`) and place it somewhere on your `PATH`.
 
 ## Library usage
 
@@ -104,26 +121,11 @@ Hardware-dependent tests (build tag `integration`) require a connected Arduino a
 TTLBOX_PORT=/dev/ttyACM0 go test -tags integration ./...
 ```
 
-## Download pre-built binaries
-
-Pre-built binaries for each release are available on the [GitHub Releases page](../../releases/latest).
-
-| OS | Architecture | File |
-|---|---|---|
-| Linux | x86-64 | `ttlbox-linux-amd64` |
-| Linux | ARM64 | `ttlbox-linux-arm64` |
-| macOS | x86-64 (Intel) | `ttlbox-macos-amd64` |
-| macOS | ARM64 (Apple Silicon) | `ttlbox-macos-arm64` |
-| Windows | x86-64 | `ttlbox-windows-amd64.exe` |
-| Windows | ARM64 | `ttlbox-windows-arm64.exe` |
-
-Download the binary for your platform, make it executable (Linux/macOS: `chmod +x ttlbox-*`), and place it somewhere on your `PATH`.
-
 ## License
 
 Copyright 2006 Christophe Pallier
 
-Co-author: Claude Sonnet
+Co-author: Claude Sonnet and Mirian Aïnar (original Python code)
 
 Distributed under the [GNU General Public License v3](LICENSE.txt).
 

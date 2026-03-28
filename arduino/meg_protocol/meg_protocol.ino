@@ -1,3 +1,6 @@
+// Copyright 2025 Mirian Aïnar
+// License: GNU General Public License v3
+//
 // Baud: 115200  8N1
 
 #include <Arduino.h>
