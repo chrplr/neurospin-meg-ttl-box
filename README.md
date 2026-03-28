@@ -11,7 +11,7 @@ See [`arduino/README.md`](arduino/README.md) for hardware setup, pin mapping, an
 
 The current repository contains is a Go port of [meg_USBio](https://github.com/mirian22ainar/meg_USBio), which provides the original Python client and Arduino firmware.  
 
-The ttl-box and its Python API were designed and implemented by [Mirian Aïnar](https://www.linkedin.com/in/mirian-ainar/) under the supervision of [Christophe Pallier](http://www.pallier.org) and with technical support from Marie-France Fourcade and Jérémy Bernard (CEA Neurospin). 
+The ttl-box and its Python API were designed and implemented by **[Mirian Aïnar](https://www.linkedin.com/in/mirian-ainar/)** under the supervision of **[Christophe Pallier](http://www.pallier.org)** with support from **Marie-France Fourcade** and **Jérémy Bernard** (CEA Neurospin TEAM-stim). 
 
 > [!WARNING]
 > While we have battle-tested the Python version, this one needs testing. Please submit bug reports and suggestions to https://github.com/chrplr/neurospin-meg-ttl-box/issues
