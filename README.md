@@ -104,6 +104,21 @@ Hardware-dependent tests (build tag `integration`) require a connected Arduino a
 TTLBOX_PORT=/dev/ttyACM0 go test -tags integration ./...
 ```
 
+## Download pre-built binaries
+
+Pre-built binaries for each release are available on the [GitHub Releases page](../../releases/latest).
+
+| OS | Architecture | File |
+|---|---|---|
+| Linux | x86-64 | `ttlbox-linux-amd64` |
+| Linux | ARM64 | `ttlbox-linux-arm64` |
+| macOS | x86-64 (Intel) | `ttlbox-macos-amd64` |
+| macOS | ARM64 (Apple Silicon) | `ttlbox-macos-arm64` |
+| Windows | x86-64 | `ttlbox-windows-amd64.exe` |
+| Windows | ARM64 | `ttlbox-windows-arm64.exe` |
+
+Download the binary for your platform, make it executable (Linux/macOS: `chmod +x ttlbox-*`), and place it somewhere on your `PATH`.
+
 ## License
 
 Copyright 2006 Christophe Pallier
