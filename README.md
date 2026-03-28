@@ -2,21 +2,19 @@
 
 Go library and CLI for the Arduino-based TTL trigger and response-button interface used in MEG (magnetoencephalography) experiments at NeuroSpin.
 
-This is a Go port of [meg_USBio](https://github.com/mirian22ainar/meg_USBio), which provides the original Python client and Arduino firmware.
-
-Note: The ttl-box and its Python API were designed and implemented by [Mirian Aïnar](https://www.linkedin.com/in/mirian-ainar/) under the supervision of [Christophe Pallier](http://www.pallier.org) and with technical support from Marie-France Fourcade and Jérémy Bernardi (CEA Neurospin). 
-
-
-## Overview
-
-The system replaces the legacy parallel port with an Arduino Mega 2560 connected over USB. It exposes:
+The system replaces a legacy parallel port with an Arduino Mega 2560 connected over USB. It exposes:
 
 - **8 TTL output lines** (pins D30–D37) for generating stimulus-onset triggers
 - **8 TTL input lines** (pins D22–D29) for reading FORP response-box buttons
 
 See [`arduino/README.md`](arduino/README.md) for hardware setup, pin mapping, and flashing instructions.
 
+The current repository contains is a Go port of [meg_USBio](https://github.com/mirian22ainar/meg_USBio), which provides the original Python client and Arduino firmware.  
 
+The ttl-box and its Python API were designed and implemented by [Mirian Aïnar](https://www.linkedin.com/in/mirian-ainar/) under the supervision of [Christophe Pallier](http://www.pallier.org) and with technical support from Marie-France Fourcade and Jérémy Bernard (CEA Neurospin). 
+
+> [!WARNING]
+> While we have battle-tested the Python version, this one needs testing. Please submit bug reports and suggestions to https://github.com/chrplr/neurospin-meg-ttl-box/issues
 
 
 ## Installation
@@ -47,6 +45,10 @@ Otherwise, download a pre-built binary for your platform from the [GitHub Releas
 | Windows | ARM64 | `ttlbox-windows-arm64.exe` |
 
 Make it executable (Linux/macOS: `chmod +x ttlbox-*`) and place it somewhere on your `PATH`.
+
+> [!WARNING]
+> If  Windows Deender or macOS Getkeeper tells you that the binary is damaged or a dangerous, do not believe it and go ahead.
+> Under macOS, use `xattr -d com.apple.quarantine ./ttbox-*` then `chmod +x ttlbox*`. 
 
 ## Finding the serial port
 
