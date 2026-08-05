@@ -1,0 +1,8 @@
+NeuroSpin MEG TTL Box
+Copyright 2025-2026 Christophe Pallier
+Copyright 2025 Mirian Aïnar
+
+This product includes software developed at NeuroSpin, CEA Paris-Saclay.
+
+This is a Go port of meg_USBio (https://github.com/mirian22ainar/meg_USBio),
+whose original Python client and Arduino firmware were written by Mirian Aïnar.

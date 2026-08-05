@@ -9,7 +9,7 @@ The system replaces a legacy parallel port with an Arduino Mega 2560 connected o
 
 See [`arduino/README.md`](arduino/README.md) for hardware setup, pin mapping, and flashing instructions.
 
-The current repository contains is a Go port of [meg_USBio](https://github.com/mirian22ainar/meg_USBio), which provides the original Python client and Arduino firmware.  
+The current repository is a Go port of [meg_USBio](https://github.com/mirian22ainar/meg_USBio), which provides the original Python client and Arduino firmware.  
 
 The ttl-box and its Python API were designed and implemented by **[Mirian Aïnar](https://www.linkedin.com/in/mirian-ainar/)** under the supervision of **[Christophe Pallier](http://www.pallier.org)** with support from **Marie-France Fourcade** and **Jérémy Bernard** (CEA Neurospin TEAM-stim). 
 
@@ -165,11 +165,16 @@ TTLBOX_PORT=/dev/ttyACM0 go test -tags integration ./...
 
 ## License
 
-Copyright 2006 Christophe Pallier
+Copyright 2025-2026 Christophe Pallier
+Copyright 2025 Mirian Aïnar
 
-Co-author: Claude Sonnet and Mirian Aïnar (original Python code)
+Distributed under the [Apache License, Version 2.0](LICENSE.txt).
 
-Distributed under the [GNU General Public License v3](LICENSE.txt).
+The Arduino firmware and the original Python implementation from which the Go
+client was ported were written by Mirian Aïnar. Co-authored with Claude.
+
+If you redistribute this software, the Apache License requires you to pass on
+the attribution notices in [NOTICE](NOTICE) — see section 4(d).
 
  
 [ChrPlr](https://github.com/chrplr)
