@@ -9,6 +9,12 @@ The system replaces a legacy parallel port with an Arduino Mega 2560 connected o
 
 See [`arduino/README.md`](arduino/README.md) for hardware setup, pin mapping, and flashing instructions.
 
+See [`TIMING.md`](TIMING.md) for what the device can and cannot do, measured on
+hardware: trigger codes are atomic to within 250 µs, pulse widths run
+systematically 0.5–0.7 ms **short**, host→device latency is ~1.5 ms, and
+reaction-time accuracy is sub-millisecond rather than microsecond. Raw captures
+in [`measurements/`](measurements/).
+
 The current repository is a Go port of [meg_USBio](https://github.com/mirian22ainar/meg_USBio), which provides the original Python client and Arduino firmware.  
 
 The ttl-box and its Python API were designed and implemented by **[Mirian Aïnar](https://www.linkedin.com/in/mirian-ainar/)** under the supervision of **[Christophe Pallier](http://www.pallier.org)** with support from **Marie-France Fourcade** and **Jérémy Bernard** (CEA Neurospin TEAM-stim). 
