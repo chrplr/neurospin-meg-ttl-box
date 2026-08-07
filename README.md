@@ -11,10 +11,44 @@ See [`arduino/README.md`](arduino/README.md) for hardware setup, pin mapping, an
 
 See [`TIMING.md`](TIMING.md) for what the device can and cannot do, measured on
 hardware: a simultaneous two-line write is atomic to within 250 µs, pulse widths
-run systematically 0.5–0.7 ms **short**, host→device latency is ~1.5 ms, and
+run systematically 0.5–0.7 ms **short** and are unaffected by host load, and
 reaction-time accuracy is sub-millisecond rather than microsecond. It also marks
-what is *not* yet measured, and names the block that measures it. Raw data and
-the measurement harness are in [`measurements/`](measurements/).
+what is *not* yet measured — including the absolute host→device latency, for the
+reason below — and names the block that measures it. Raw data and the measurement
+harness are in [`measurements/`](measurements/).
+
+### Why no absolute latency is quoted
+
+An earlier version of this README said "host→device latency is ~1.5 ms". That
+figure was withdrawn: it rested on two methods, and neither measures it.
+
+The onset-to-onset method cannot, as a matter of arithmetic. For pulses commanded
+at `c[i]` and observed at `c[i] + L[i]`, the measured interval is
+`(c[i+1] − c[i]) + (L[i+1] − L[i])` — **the latency cancels**, so with a constant
+latency the measured interval equals the commanded one however large that latency
+is. What it actually showed was the host loop's per-iteration overhead, dominated
+by a USB round trip, hence a number that looks like a latency.
+
+The loopback method does measure latency, but converting the firmware's `micros()`
+timestamp into host time costs the clock-offset estimate, which is bounded by the
+asymmetry of the sync round trip — and that round trip has a ~2.4 ms floor here,
+larger than the quantity being measured.
+
+**Round trips cannot rescue this.** Every such measurement is a sum of an
+outbound and a return latency, and no combination of devices separates them: it
+is the one-way delay problem from clock synchronisation, where round-trip time is
+measurable to arbitrary precision and one-way delay is not derivable from it. NTP
+assumes symmetry for the same reason.
+
+Measuring it needs an event the host can produce at a time it knows exactly,
+visible to the same instrument as the TTL output — a parallel-port `outb`, or a
+memory-mapped GPIO write. Everything else in `TIMING.md` stays inside a single
+clock and is unaffected.
+
+~1.5 ms remains a reasonable estimate from first principles — one USB frame plus
+the ~174 µs two command bytes take on the 16u2 UART — and a scope comparison
+against a DLP-IO8 puts the two devices within 38 µs of each other. But it is an
+estimate, and this document no longer presents it as a result.
 
 The current repository is a Go port of [meg_USBio](https://github.com/mirian22ainar/meg_USBio), which provides the original Python client and Arduino firmware.  
 
