@@ -34,11 +34,19 @@ timestamp into host time costs the clock-offset estimate, which is bounded by th
 asymmetry of the sync round trip — and that round trip has a ~2.4 ms floor here,
 larger than the quantity being measured.
 
-**Round trips cannot rescue this.** Every such measurement is a sum of an
-outbound and a return latency, and no combination of devices separates them: it
-is the one-way delay problem from clock synchronisation, where round-trip time is
-measurable to arbitrary precision and one-way delay is not derivable from it. NTP
-assumes symmetry for the same reason.
+**Round trips bound it but cannot resolve it.** Every such measurement is a sum
+of an outbound and a return latency, and no combination of devices separates
+them: it is the one-way delay problem from clock synchronisation, where
+round-trip time is measurable to arbitrary precision and one-way delay is not
+derivable from it. NTP assumes symmetry for the same reason.
+
+What a round trip *does* give is an upper bound, since neither term can be
+negative — and the tightness of that bound is set by the return path, not the
+outbound one. On a DLP-IO8 measured the same week, the best round trip was
+0.793 ms with the FTDI latency timer at 1 ms and 15.396 ms at the default of 16,
+so the same measurement bounds the outbound latency at either 0.8 ms or 15 ms
+depending on nothing but a driver setting. That is worth knowing before treating
+a round-trip figure as informative.
 
 Measuring it needs an event the host can produce at a time it knows exactly,
 visible to the same instrument as the TTL output — a parallel-port `outb`, or a
