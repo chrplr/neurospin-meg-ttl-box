@@ -12,6 +12,7 @@ Raw data and reproduction instructions in [`measurements/`](measurements/).
 |---|---|---|
 | [`2026-08-05-bbtk`](measurements/2026-08-05-bbtk/) | 2026-08-05 | output side: pulse width at 5/10/20 ms, two-line skew, host→device latency |
 | [`2026-08-07-s3-loopback`](measurements/2026-08-07-s3-loopback/) | 2026-08-07 | loopback only, no instrument: host round trip idle vs loaded (n=10 000 each), the split-write stall, an hour of sustained load |
+| (in [dlp-io8-g](https://github.com/chrplr/dlp-io8-g)) | 2026-08-07 | scope: pulse width at 5–50 ms under three host conditions, and a head-to-head against a DLP-IO8 |
 
 ---
 
@@ -25,7 +26,9 @@ Raw data and reproduction instructions in [`measurements/`](measurements/).
 | Simultaneous two-line write | **atomic**, skew < 250 µs | BBTKv3, 20 trials |
 | Pulse width bias, 5–20 ms | **−0.5 to −0.7 ms** (systematically short) | BBTKv3, 60 pulses |
 | Pulse width jitter | < 1 ms beyond quantisation | BBTKv3 |
-| Host→device latency | ~1.5 ms median | BBTK onset-to-onset; the loopback method agrees only to an order of magnitude, see below |
+| Host→device latency | **not measured** (~1.5 ms is an estimate; see below) | neither available method measures it |
+| Write latency vs a DLP-IO8 | within **38 µs** | scope, both write orders, n≈98 |
+| Pulse width, immunity to host load | **spread unchanged** by CPU load or real-time priority | scope, n=50 per width, 3 conditions |
 | Host round trip, idle | 2.64 ms median, 6.01 ms max | loopback, n=10 000 |
 | Host round trip, under CPU load | 3.71 ms median, **25.29 ms max** | loopback, n=10 000 |
 | Input event timestamp | few µs of the edge | firmware `micros()`, by construction |
@@ -88,9 +91,41 @@ has 1 ms resolution and truncates, so the realised width is uniform on
 *20 pulses per width, BBTKv3 at 0.25 ms sampling.*
 
 **This is a bias, not noise — it cannot be averaged away.** If a paradigm needs a
-true 5 ms pulse, request 6 ms. Total spread of 1.25–2.0 ms is barely above the
-1.25 ms floor set by truncation plus the instrument's own sampling, so genuine
-firmware jitter is well under a millisecond.
+true 5 ms pulse, request 6 ms.
+
+**Re-measured 2026-08-07** on a scope at 4 ns resolution, n=50 per width, 5 to
+50 ms: the spread is **1.9–2.0 ms**, not the 1.25–2.0 ms seen through a 0.25 ms
+instrument, and it is the same at every width.
+
+That is about a millisecond more than `millis()` truncation alone accounts for.
+The likely explanation is that the pulse *onset* also lands at an arbitrary point
+within a `millis()` tick, so two independent uniform milliseconds combine to a
+~2 ms range — but that is a hypothesis fitted to the observation, not something
+measured, and the earlier claim that "genuine firmware jitter is well under a
+millisecond" was reasoning from a floor that appears to have been understated.
+
+### The width does not care what the host is doing
+
+The same scope measurement under three host conditions, spread in ms:
+
+| condition | 5 ms | 10 ms | 20 ms | 50 ms |
+|---|---|---|---|---|
+| idle | 1.96 | 2.00 | 2.01 | 1.93 |
+| under CPU load (`stress-ng --cpu 0`) | 1.55 | 2.01 | 1.96 | 1.95 |
+| load + `chrt -f 50` | 1.92 | 1.93 | 1.90 | 1.92 |
+
+Twelve figures, all 1.9–2.0 ms. CPU load does not move it and real-time priority
+does not improve it, because the firmware times the pulse and the host is not in
+that loop at any point.
+
+The contrast is with a device that has no pulse timer. Measured identically on
+the same scope and the same host, a DLP-IO8's width — which is the interval
+between two host writes — spreads 0.05–0.12 ms idle, **1.8–4.8 ms under the same
+load**, and returns to 0.07–0.12 ms under `chrt`. Correctly configured it is far
+more precise than this box; carelessly configured it is far worse. This box
+offers ~2 ms you cannot improve; that one offers 0.1 ms conditional on system
+administration. See
+[dlp-io8-g/measurements](https://github.com/chrplr/dlp-io8-g).
 
 The truncation model predicts the same bias at every width, but only 5, 10 and
 20 ms were tested. The `widths` block covers 1–200 ms, and adds a second witness:
@@ -186,8 +221,20 @@ twice, by unrelated methods:
 The spread is one USB full-speed frame (1 ms) plus the ~174 µs two command bytes
 take on the 16u2↔2560 UART at 115200 baud.
 
-**The two methods are not equally sound, and the agreement is weaker evidence
-than it looks.** The loopback method has to convert a device `micros()` value
+**Neither method measures what this section claims, and their agreement is not
+corroboration.**
+
+The onset-to-onset method cannot measure latency at all. For pulses commanded at
+times c[i] and observed at c[i] + L[i], the measured interval is
+
+    o[i+1] − o[i] = (c[i+1] − c[i]) + (L[i+1] − L[i])
+
+and the latency cancels. With a constant latency the measured interval equals
+the commanded one exactly, however large that latency is. What the +1.5 ms
+actually shows is the host loop's per-iteration overhead — which is dominated by
+a USB round trip, hence a number that looks like a latency and agrees with one.
+
+The loopback method does measure latency, but pays for it: The loopback method has to convert a device `micros()` value
 into host time, which costs the accuracy of the clock-offset estimate — and that
 estimate is bounded by the asymmetry of a `get_micros` round trip, whose floor on
 this link is about 2.4 ms (one USB frame each way plus four reply bytes at
@@ -201,10 +248,22 @@ difference explained entirely by their differing offset estimates, and in the
 wrong direction, since the 1.361 ms run was the one under CPU load. That is the
 symptom that makes the limitation undeniable.
 
-**So the number above rests on the BBTK method, which needs no offset at all**;
-the loopback method corroborates the order of magnitude and nothing finer. For
-comparing conditions, or for any figure meant to be quoted, use a quantity that
-stays inside one clock — see the next section.
+**So ~1.5 ms is an estimate from first principles — one USB frame plus the
+~174 µs two command bytes take on the 16u2 UART — and not a measurement.** It is
+almost certainly the right order of magnitude, and it is consistent with
+everything measured since, but nothing here establishes it.
+
+Measuring it properly needs something this setup does not have: an event the
+host can produce at a time it knows exactly, visible to the same instrument.
+A parallel-port `outb` is the classic choice (sub-microsecond, and the host knows
+when it executed), a memory-mapped GPIO write on an SBC is equivalent, and a USB
+protocol analyser would do it by timestamping the packet on the wire. With any
+of those, the order-swapped comparison used for the DLP head-to-head below gives
+the absolute figure directly. Without one, only differences and bounds are
+available.
+
+For comparing conditions, or for any figure meant to be quoted, use a quantity
+that stays inside one clock — see the next section.
 
 **This latency is irreducible from the host side** and is the part of a reaction
 time that firmware timestamping cannot remove. It is why a trigger's *onset*
