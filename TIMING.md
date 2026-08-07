@@ -11,6 +11,7 @@ Raw data and reproduction instructions in [`measurements/`](measurements/).
 | session | date | covered |
 |---|---|---|
 | [`2026-08-05-bbtk`](measurements/2026-08-05-bbtk/) | 2026-08-05 | output side: pulse width at 5/10/20 ms, two-line skew, host→device latency |
+| [`2026-08-07-s3-loopback`](measurements/2026-08-07-s3-loopback/) | 2026-08-07 | loopback only, no instrument: host round trip idle vs loaded (n=10 000 each), the split-write stall, an hour of sustained load |
 
 ---
 
@@ -24,16 +25,20 @@ Raw data and reproduction instructions in [`measurements/`](measurements/).
 | Simultaneous two-line write | **atomic**, skew < 250 µs | BBTKv3, 20 trials |
 | Pulse width bias, 5–20 ms | **−0.5 to −0.7 ms** (systematically short) | BBTKv3, 60 pulses |
 | Pulse width jitter | < 1 ms beyond quantisation | BBTKv3 |
-| Host→device latency | ~1.5 ms median, ~0.8–2.4 ms range | two independent methods, n=50/80 |
+| Host→device latency | ~1.5 ms median | BBTK onset-to-onset; the loopback method agrees only to an order of magnitude, see below |
+| Host round trip, idle | 2.64 ms median, 6.01 ms max | loopback, n=10 000 |
+| Host round trip, under CPU load | 3.71 ms median, **25.29 ms max** | loopback, n=10 000 |
 | Input event timestamp | few µs of the edge | firmware `micros()`, by construction |
 | Button poll (legacy path) | ≥ 5 ms, host-limited | by construction |
 | Pulse width outside 5–20 ms | **not yet measured** | block `widths` |
 | Trigger-code *change* atomicity | **not yet measured** | block `codechange` |
-| Host→device latency tail (p99+) | **not yet measured** | block `latency` |
-| Clock drift | **not yet measured** | block `drift` |
+| Split command stalls the firmware | **+17.5 ms** on a pulse in flight | block `splitwrite`, n=50 |
+| Device clock rate error | **≈ +975 ppm** (3.5 s/hour), preliminary | two `latency` runs agreeing to 6 ppm; block `drift` will settle it |
 | Device→host notification latency | **not yet measured** | block `respond` |
 | Closed-loop latency | **not yet measured** | block `respond` |
-| Behaviour under sustained load | **not yet measured** | block `overflow` |
+| Sustained load, 1 h at 20 Hz | 2 events missing of 141 088 (0.0014 %) | block `overflow` |
+| Queue overflow reporting | flagged in 11 of 11 stall windows, 0 of 12 drain windows | block `overflow` |
+| Real-time priority | **not yet measured** | needs `RLIMIT_RTPRIO` > 0 on the host |
 
 The unmeasured rows are not oversights being confessed: each names a block in
 [`cmd/ttlbox-timing`](cmd/ttlbox-timing/) that measures it, with the protocol
@@ -178,9 +183,28 @@ twice, by unrelated methods:
 | Firmware timestamp of a loopback edge vs. host clock (50 trials) | 802 µs | **1.44 ms** | 2.05 ms |
 | BBTK onset-to-onset interval minus requested ISI (80 pulses) | — | **~1.5 ms** | — |
 
-Two independent measurements agreeing within 0.1 ms is reasonable evidence both
-are sound. The spread is one USB full-speed frame (1 ms) plus the ~174 µs two
-command bytes take on the 16u2↔2560 UART at 115200 baud.
+The spread is one USB full-speed frame (1 ms) plus the ~174 µs two command bytes
+take on the 16u2↔2560 UART at 115200 baud.
+
+**The two methods are not equally sound, and the agreement is weaker evidence
+than it looks.** The loopback method has to convert a device `micros()` value
+into host time, which costs the accuracy of the clock-offset estimate — and that
+estimate is bounded by the asymmetry of a `get_micros` round trip, whose floor on
+this link is about 2.4 ms (one USB frame each way plus four reply bytes at
+115200). The offset can therefore be wrong by more than the ~1.5 ms being
+measured, and taking more samples does not help, because the floor is structural.
+
+Measured on 2026-08-07: the best round trip achieved in 20 tries was 2.003 ms in
+one run and 0.984 ms in another, giving offset bounds of ±1.00 ms and ±0.49 ms.
+Those two runs then reported absolute latencies of 1.979 ms and 1.361 ms — a
+difference explained entirely by their differing offset estimates, and in the
+wrong direction, since the 1.361 ms run was the one under CPU load. That is the
+symptom that makes the limitation undeniable.
+
+**So the number above rests on the BBTK method, which needs no offset at all**;
+the loopback method corroborates the order of magnitude and nothing finer. For
+comparing conditions, or for any figure meant to be quoted, use a quantity that
+stays inside one clock — see the next section.
 
 **This latency is irreducible from the host side** and is the part of a reaction
 time that firmware timestamping cannot remove. It is why a trigger's *onset*
@@ -190,9 +214,29 @@ timing.
 
 Fifty trials describe a median well and a tail not at all, and for MEG the tail
 is what corrupts a trial. The `latency` block runs thousands, reports to the
-99.9th percentile, and repeats under three host conditions — idle, under CPU
-load, and at real-time priority — because the figure that matters is the one on
-a stimulus PC that is also decoding video.
+99.9th percentile, and repeats under host conditions — because the figure that
+matters is the one on a stimulus PC that is also decoding video.
+
+### Host round trip, and what CPU load does to it
+
+The safe way to compare conditions is a quantity that never leaves the host
+clock: from issuing the command to learning of the resulting edge. It bounds the
+write latency from above and needs no offset estimate at all.
+
+**Measured 2026-08-07**, 10 000 pulses per condition, loopback D30→D22:
+
+| condition | p50 | p99 | p99.9 | max |
+|---|---|---|---|---|
+| idle | 2.64 | 5.45 | 5.79 | 6.01 ms |
+| CPU load (`stress-ng --cpu 0`) | 3.71 | 6.83 | 8.77 | **25.29 ms** |
+
+The inter-onset intervals, measured purely in device time and so equally free of
+any offset, agree: p99.9 rises from 21.2 ms to 26.8 ms under load against a
+commanded 20 ms.
+
+A 25 ms worst case is a corrupted trial, and it is the host's doing rather than
+the box's. Real-time priority was not measured — `RLIMIT_RTPRIO` was 0 on the
+test machine — and is the obvious next comparison.
 
 ---
 
@@ -220,9 +264,17 @@ flight and delay the timestamp of any input that changes meanwhile.
 methods in this package already do (`box.go`, `tx`), so ordinary code is safe;
 `SendRaw` is the only way to violate it, and it is documented as such.
 
-The `splitwrite` block measures the effect, with no instrument required. Until
-it is run this is a prediction from the source, not a result — but the contract
-stands either way, because there is no reason to split a command.
+**Measured 2026-08-07**, no instrument required. A 5 ms pulse was issued, then a
+lone opcode byte 2 ms later with its argument withheld for 20 ms:
+
+| arm | realised width (median) |
+|---|---|
+| command written once | 4.59 ms |
+| opcode and argument split | **22.14 ms** |
+
+An extension of +17.5 ms against +17.0 predicted, over 50 trials per arm, with
+the two distributions not overlapping at all. The stall is real, and it is as
+long as you make it: the spin has no timeout.
 
 ---
 
@@ -237,6 +289,12 @@ summary table, nothing in this repository currently measures them.
   but nothing varies the temperature or repeats across ambient conditions.
 - **Anything about the FORP box or the STI box** either side of this one. The
   measurements characterise the interface, not the chain it sits in.
+- **The absolute host→device latency, to better than an order of magnitude, from
+  the device alone.** This one is not a gap waiting to be filled but a limit:
+  converting a device timestamp to host time costs the clock-offset estimate, and
+  that estimate is floored by the ~2.4 ms round trip of the sync exchange itself.
+  No amount of sampling improves it. An absolute figure has to come from an
+  external instrument; from the box alone, quote the host round trip instead.
 
 ---
 

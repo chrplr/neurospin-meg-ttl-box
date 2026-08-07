@@ -1,0 +1,61 @@
+block latency — about 3m24s
+  10000 pulses of 5 ms on line 0, ISI 20 ms (3m20s)
+  host condition recorded as "idle"
+
+TTL box on /dev/ttyACM0: firmware v1, caps 0x03 (atomic port: true, input timestamps: true)
+  marker: 100 ms pulse on line 0
+  10000 pulses of 5 ms on line 0
+
+  host->device latency (idle): n=10000  min=1.625556ms  p50=1.978507ms  p95=2.184116ms  p99=2.195196ms  p99.9=2.245627ms  max=2.287759ms  mean=1.967585ms
+  wrote measurements/2026-08-07-s3-loopback/latency-idle.csv
+  clock: 5 samples over 3m27s — rate error +978.34 ppm, residual RMS 340µs, max 538µs
+block latency — about 3m24s
+  10000 pulses of 5 ms on line 0, ISI 20 ms (3m20s)
+  host condition recorded as "load"
+
+TTL box on /dev/ttyACM0: firmware v1, caps 0x03 (atomic port: true, input timestamps: true)
+  marker: 100 ms pulse on line 0
+  10000 pulses of 5 ms on line 0
+
+  host->device latency (load): n=10000  min=1.074099ms  p50=1.360588ms  p95=1.754747ms  p99=1.811139ms  p99.9=1.840063ms  max=2.071392ms  mean=1.399947ms
+  wrote measurements/2026-08-07-s3-loopback/latency-load.csv
+  clock: 5 samples over 3m30s — rate error +972.53 ppm, residual RMS 425µs, max 662µs
+block splitwrite — about 24s
+  control arm: 50 pulses of 5 ms, command written once
+  split arm: same, plus a lone opcode at +2 ms with its argument held back 20 ms
+  prediction: split-arm pulses longer by about 17 ms
+
+TTL box on /dev/ttyACM0: firmware v1, caps 0x03 (atomic port: true, input timestamps: true)
+  marker: 100 ms pulse on line 0
+  control arm: 50 pulses of 5 ms
+  split arm: 50 pulses of 5 ms
+
+  control realised width  n=50  min=3.18ms  p50=4.588ms  p95=5.08ms  p99=5.104ms  p99.9=5.104ms  max=5.104ms  mean=4.51336ms
+  split realised width    n=50  min=22.064ms  p50=22.14ms  p95=22.612ms  p99=22.652ms  p99.9=22.652ms  max=22.652ms  mean=22.2192ms
+
+  median extension 17.552ms, predicted 17ms
+  the stall is real: a command split across two writes holds the
+  firmware's main loop, extending any pulse in flight and delaying
+  the timestamp of any input that changes meanwhile.
+  wrote measurements/2026-08-07-s3-loopback/splitwrite.csv
+block overflow — about 1h0m2s
+  1h0m0s at 20 pulses/s of 5 ms on line 0
+  stop draining for 3000 ms every 5m0s (the 32-slot queue fills in ~800 ms)
+
+TTL box on /dev/ttyACM0: firmware v1, caps 0x03 (atomic port: true, input timestamps: true)
+  1h0m0s at 20 pulses/s
+  5m0s elapsed, 5937 pulses, 11874 events, 0 windows with overflow
+  10m0s elapsed, 11872 pulses, 23654 events, 1 windows with overflow
+  15m0s elapsed, 17807 pulses, 35434 events, 2 windows with overflow
+  20m0s elapsed, 23741 pulses, 47213 events, 3 windows with overflow
+  25m0s elapsed, 29675 pulses, 58993 events, 4 windows with overflow
+  30m0s elapsed, 35610 pulses, 70775 events, 5 windows with overflow
+  35m0s elapsed, 41545 pulses, 82555 events, 6 windows with overflow
+  40m0s elapsed, 47479 pulses, 94335 events, 7 windows with overflow
+  45m0s elapsed, 53412 pulses, 106113 events, 8 windows with overflow
+  50m0s elapsed, 59346 pulses, 117893 events, 9 windows with overflow
+  55m0s elapsed, 65280 pulses, 129672 events, 10 windows with overflow
+
+  71207 pulses emitted, 141438 events received (2 per pulse would be 142414)
+  11 of 23 windows reported a queue overflow
+  wrote measurements/2026-08-07-s3-loopback/overflow.csv

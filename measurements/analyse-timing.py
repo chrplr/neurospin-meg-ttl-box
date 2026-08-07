@@ -80,7 +80,9 @@ def clock_fit(session, name):
         off = ys[0] - xs[0]
         return (lambda d: d + off), None
     a, b, rms, worst = fit
-    return (lambda d: a + b * d), (len(rows), b, rms, worst)
+    rts = sorted(float(r["roundtrip_us"]) for r in rows if r.get("roundtrip_us"))
+    best_rt = rts[0] if rts else float("nan")
+    return (lambda d: a + b * d), (len(rows), b, rms, worst, best_rt)
 
 
 def section(title):
@@ -88,11 +90,35 @@ def section(title):
 
 
 def report_clock(info):
+    """Report the clock fit, and how far a converted timestamp can be trusted.
+
+    Rate and offset are not equally well determined, and conflating them is how
+    a device→host conversion goes quietly wrong. The rate is a slope over the
+    whole run and is tight; the offset is an intercept estimated by bracketing a
+    get_micros round trip, and Cristian's midpoint is only exact if the two
+    directions take equally long. The realistic bound on the offset is therefore
+    half the SHORTEST round trip achieved, which for this device has a floor of
+    about 2.4 ms — one USB frame each way plus four reply bytes at 115200 on the
+    16u2 UART. That floor is not reducible by taking more samples.
+    """
     if info is None:
         return
-    n, rate, rms, worst = info
+    n, rate, rms, worst, best_rt = info
     print(f"  clock: {n} samples, rate error {(rate - 1) * 1e6:+.2f} ppm, "
           f"residual RMS {rms:.1f} µs, max {worst:.1f} µs")
+    if n < 10:
+        print(f"  clock: only {n} samples — too few to separate drift from "
+              "round-trip noise; raise --clock-every")
+    print(f"  clock: best round trip {best_rt / 1000:.3f} ms, so any single "
+          f"device→host conversion carries up to ±{best_rt / 2000:.3f} ms of "
+          "offset error")
+
+
+def offset_bound_ms(info):
+    """Half the shortest clock round trip, in ms: the error a conversion can carry."""
+    if info is None:
+        return float("inf")
+    return info[4] / 2000
 
 
 # ---------------------------------------------------------------- blocks
@@ -170,40 +196,105 @@ def analyse_latency(session):
     """
     paths = [p for p in sorted(glob.glob(os.path.join(session, "latency*.csv")))
              if "-clock" not in p]
-    for path in paths:
-        analyse_one_latency(session, path)
+    results = [analyse_one_latency(session, p) for p in paths]
+    compare_conditions([r for r in results if r])
 
 
 def analyse_one_latency(session, path):
+    """One latency run.
+
+    Ordered deliberately: the quantities that stay inside a single clock come
+    first, and the one that crosses clocks comes last with its error bar. An
+    absolute host→device latency is the number everyone wants, but it is the
+    least trustworthy thing here — it is around 1.5 ms and the offset estimate
+    needed to compute it carries over 1 ms of possible error. The round trip and
+    the inter-onset intervals need no offset at all and so are quotable.
+    """
     name = os.path.basename(path)[:-4]
     section(f"B3/B9  HOST -> DEVICE LATENCY  ({name})")
     rows = read(path)
-    to_host, info = clock_fit(session, name)
-    if to_host is None:
-        print("  no clock samples — cannot convert device time to host time")
-        return
-    report_clock(info)
-    by_cond = {}
-    for r in rows:
-        if int(r["n_events"]) == 0:
-            continue
-        lat = (to_host(float(r["dev_rise_us"])) - float(r["host_write_us"])) / 1000
-        by_cond.setdefault(r.get("condition", "-"), []).append(lat)
-    for cond, vals in by_cond.items():
-        print(f"\n  condition {cond!r}:")
-        print(describe(vals))
-    lost = sum(1 for r in rows if int(r["n_events"]) == 0)
+    live = [r for r in rows if int(r["n_events"]) > 0]
+    if not live:
+        print("  no pulse produced an event — check the loopback wiring")
+        return None
+    cond = live[0].get("condition", "-")
+
+    # 1. Host write -> host learns of the edge. Both timestamps come from the
+    #    host clock, so no device clock and no offset estimate is involved. It
+    #    bounds the write latency from above and is the safest thing to compare
+    #    between conditions.
+    trip = [(float(r["host_recv_us"]) - float(r["host_write_us"])) / 1000
+            for r in live if float(r["host_recv_us"]) > 0]
+    print(f"\n  host write -> host learns of the edge (no device clock involved):")
+    print(describe(trip))
+
+    # 2. Interval between successive edges, entirely in device time. Immune to
+    #    the offset, and affected by the rate only at the ppm level.
+    onsets = [float(r["dev_rise_us"]) for r in live]
+    isis = [(b - a) / 1000 for a, b in zip(onsets, onsets[1:])]
+    if isis:
+        print("\n  inter-onset intervals as the DEVICE saw them:")
+        print(describe(isis))
+
+    lost = len(rows) - len(live)
     if lost:
         print(f"\n  {lost} of {len(rows)} pulses produced no event at all")
-    print("\n  A serial write returns when the kernel takes the bytes, not when they")
-    print("  reach the wire, so this is an upper bound on the host's contribution.")
-    print("  The BBTK arm of the same session bounds it from outside.")
 
-    onsets = [float(r["dev_rise_us"]) for r in rows if int(r["n_events"]) > 0]
-    if len(onsets) > 2:
-        isis = [(b - a) / 1000 for a, b in zip(onsets, onsets[1:])]
-        print("\n  inter-onset intervals as the DEVICE saw them (ms):")
-        print(describe(isis))
+    # 3. The offset-dependent figure, last and hedged.
+    to_host, info = clock_fit(session, name)
+    if to_host is None:
+        print("\n  no clock samples — absolute latency cannot be computed")
+        return {"cond": cond, "trip": trip, "isis": isis, "abs": None, "bound": float("inf")}
+    print()
+    report_clock(info)
+    absolute = [(to_host(float(r["dev_rise_us"])) - float(r["host_write_us"])) / 1000
+                for r in live]
+    bound = offset_bound_ms(info)
+    print(f"\n  absolute host->device latency (crosses clocks — see the bound above):")
+    print(describe(absolute))
+    if bound > 0.25 * abs(quantile(sorted(absolute), .5) or 1):
+        print(f"\n  WARNING: the offset error (±{bound:.3f} ms) is a large fraction of")
+        print("  the latency itself, so this figure is an estimate with an error bar")
+        print("  comparable to the quantity. Do not quote it as a measurement, and do")
+        print("  not compare it between conditions — use the round trip above, or the")
+        print("  BBTK's onset-to-onset intervals, which need no offset at all.")
+
+    return {"cond": cond, "trip": trip, "isis": isis,
+            "abs": absolute, "bound": bound}
+
+
+def compare_conditions(results):
+    """Compare host conditions, using only the offset-free measures.
+
+    The absolute latency is deliberately not compared. Its offset error is
+    independent per run, so a difference between two conditions can be entirely
+    an artefact of two different offset estimates — which is exactly what
+    produced a 'faster under load' result the first time this block was run.
+    """
+    if len(results) < 2:
+        return
+    section("B3/B9  CONDITIONS COMPARED (offset-free measures only)")
+    print(f"\n{'condition':<12}{'trip p50':>10}{'trip p99.9':>12}{'trip max':>10}"
+          f"{'ISI p99.9':>11}{'ISI max':>10}")
+    for r in results:
+        t, i = sorted(r["trip"]), sorted(r["isis"])
+        print(f"{r['cond']:<12}{quantile(t, .5):>10.3f}{quantile(t, .999):>12.3f}"
+              f"{(t[-1] if t else 0):>10.3f}{quantile(i, .999):>11.3f}"
+              f"{(i[-1] if i else 0):>10.3f}")
+    print("\n  All figures in ms, and all of them stay inside one clock.")
+
+    worst = max(results, key=lambda r: quantile(sorted(r["trip"]), .999))
+    best = min(results, key=lambda r: quantile(sorted(r["trip"]), .999))
+    if worst["cond"] != best["cond"]:
+        print(f"\n  Worst tail: {worst['cond']!r}. What matters for an experiment is not")
+        print("  the median but the trials in the tail, since those are the ones that")
+        print("  land a trigger in the wrong place and cannot be recovered afterwards.")
+
+    if any(r["abs"] for r in results):
+        print("\n  Absolute latency is NOT compared here. Each run estimates the")
+        print("  host/device offset independently, and that estimate carries more")
+        print("  error than the difference between conditions, so a comparison would")
+        print("  mostly reflect the two offsets rather than the two conditions.")
 
 
 def analyse_drift(session):

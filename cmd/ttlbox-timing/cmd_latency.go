@@ -35,14 +35,26 @@ frame (1 ms) plus the ~174 µs two command bytes take on the 16u2-to-2560 UART a
 115200 baud.
 
 The same run serves two blocks. With a BBTKv3 capturing (B3), the recorded
-onset-to-onset intervals give an external view of the jitter that owes nothing
-to the box's own clock. Without an instrument (B9) it still gives the absolute
-latency, at whatever sample size is wanted — the tail needs thousands of trials,
-not the fifty a previous session could afford.
+onset-to-onset intervals give an external view that owes nothing to the box's
+own clock. Without an instrument (B9) it still gives the jitter and the tail at
+whatever sample size is wanted — and the tail needs thousands of trials, not the
+fifty a previous session could afford.
 
-One caveat belongs on the result: a serial Write returns when the kernel accepts
-the bytes, not when they reach the wire, so this is an upper bound on the host's
-contribution. That is exactly why the BBTK arm exists.
+Two caveats belong on the result, and the second is the important one.
+
+A serial Write returns when the kernel accepts the bytes, not when they reach
+the wire, so every figure here bounds the host's contribution from above.
+
+And an ABSOLUTE latency has to convert a device timestamp into host time, which
+costs the accuracy of the clock-offset estimate. That estimate is bounded by the
+asymmetry of a get_micros round trip, and the round trip has a floor of about
+2.4 ms on this link — one USB frame each way plus four reply bytes at 115200 on
+the 16u2 UART. So the offset can be wrong by more than the ~1.5 ms being
+measured, and no amount of sampling reduces it. Absolute latency is reported,
+but the figures to quote and to compare between conditions are the ones that
+stay inside a single clock: the host round trip printed alongside it, and the
+BBTK's onset-to-onset intervals. See measurements/analyse-timing.py, which
+reports the offset bound explicitly.
 
 Conditions worth running and comparing with --condition and --tag: an idle host,
 a host under load (stress-ng), and a real-time priority (chrt -f 50).`,
@@ -75,12 +87,18 @@ func latencyPlan() blockPlan {
 	}
 }
 
+// minClockSamples is the fewest host/device clock comparisons a run should
+// gather, whatever --clock-every says. Below about this many the least-squares
+// fit cannot tell the device's drift from the noise of its own sampling.
+const minClockSamples = 20
+
 func runLatency() error {
 	if latISIMs <= latWidthMs {
 		return fmt.Errorf("--isi (%d ms) must exceed --width (%d ms), or consecutive pulses merge",
 			latISIMs, latWidthMs)
 	}
-	if preflight(latencyPlan()) {
+	plan := latencyPlan()
+	if preflight(plan) {
 		return nil
 	}
 
@@ -116,13 +134,23 @@ func runLatency() error {
 	}
 
 	isi := time.Duration(latISIMs) * time.Millisecond
+
+	// Take at least minClockSamples over the run however short it is. The
+	// flag's value is a ceiling, not a schedule: a 200 s run at the default
+	// 60 s cadence yields five samples, which cannot separate the device's
+	// drift from the noise of the sampling round trip, and leaves the offset
+	// resting on almost nothing.
 	clockEvery := time.Duration(latClockEvery) * time.Second
+	if spread := plan.Duration / minClockSamples; spread < clockEvery {
+		clockEvery = max(spread, time.Second)
+	}
 	nextClock := time.Now().Add(clockEvery)
 
 	// Kept in memory only to print a summary at the end; the CSV stays raw so
 	// the analysis can redo this with the completed clock fit.
 	type trial struct {
 		hostWrite time.Time
+		hostRecv  time.Time
 		devRise   ttlbox.DeviceTime
 		ok        bool
 	}
@@ -153,7 +181,7 @@ func runLatency() error {
 		if len(evs) > 0 {
 			rise = clk.Unwrap(evs[0].Event.Micros)
 			recv = evs[0].Host.Sub(origin)
-			t.devRise, t.ok = rise, true
+			t.devRise, t.hostRecv, t.ok = rise, evs[0].Host, true
 		} else {
 			lost++
 		}
@@ -172,15 +200,22 @@ func runLatency() error {
 		return err
 	}
 
-	// Convert with every clock sample now in hand, so the figures printed here
-	// use the same fit the analysis will.
-	var lat []time.Duration
+	// Report the offset-free figure first. Host write to host receipt uses only
+	// the host clock, so it needs no estimate of anything and bounds the write
+	// latency from above; the absolute latency below has to cross clocks, and
+	// pays the offset error to do it.
+	var trip, lat []time.Duration
 	for _, t := range trials {
-		if t.ok {
-			lat = append(lat, clk.HostTime(t.devRise).Sub(t.hostWrite))
+		if !t.ok {
+			continue
 		}
+		trip = append(trip, t.hostRecv.Sub(t.hostWrite))
+		lat = append(lat, clk.HostTime(t.devRise).Sub(t.hostWrite))
 	}
-	fmt.Printf("\n  host->device latency (%s): %v\n", latCondition, summarise(lat))
+	fmt.Printf("\n  host write -> host learns of edge (%s): %v\n", latCondition, summarise(trip))
+	fmt.Printf("  absolute host->device latency:      %v\n", summarise(lat))
+	fmt.Println("  The second line crosses clocks and inherits the offset estimate;")
+	fmt.Println("  ./measurements/analyse-timing.py reports how much error that carries.")
 	if lost > 0 {
 		fmt.Printf("  %d of %d pulses produced no event — investigate before using this run\n",
 			lost, latPulses)
