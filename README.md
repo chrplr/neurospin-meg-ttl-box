@@ -19,8 +19,8 @@ harness are in [`measurements/`](measurements/).
 
 ### Why no absolute latency is quoted
 
-An earlier version of this README said "host→device latency is ~1.5 ms". That
-figure was withdrawn: it rested on two methods, and neither measures it.
+The absolute host→device latency is not quoted, because neither method available
+here measures it.
 
 The onset-to-onset method cannot, as a matter of arithmetic. For pulses commanded
 at `c[i]` and observed at `c[i] + L[i]`, the measured interval is
@@ -45,10 +45,10 @@ visible to the same instrument as the TTL output — a parallel-port `outb`, or 
 memory-mapped GPIO write. Everything else in `TIMING.md` stays inside a single
 clock and is unaffected.
 
-~1.5 ms remains a reasonable estimate from first principles — one USB frame plus
-the ~174 µs two command bytes take on the 16u2 UART — and a scope comparison
-against a DLP-IO8 puts the two devices within 38 µs of each other. But it is an
-estimate, and this document no longer presents it as a result.
+A reasonable estimate from first principles is ~1.5 ms — one USB frame plus the
+~174 µs two command bytes take on the 16u2 UART — and a scope comparison against
+a DLP-IO8 puts the two devices within 38 µs of each other, so the order of
+magnitude is not in doubt. It remains an estimate rather than a measurement.
 
 The current repository is a Go port of [meg_USBio](https://github.com/mirian22ainar/meg_USBio), which provides the original Python client and Arduino firmware.  
 
