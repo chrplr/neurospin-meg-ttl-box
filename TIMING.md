@@ -13,6 +13,7 @@ Raw data and reproduction instructions in [`measurements/`](measurements/).
 | [`2026-08-05-bbtk`](measurements/2026-08-05-bbtk/) | 2026-08-05 | output side: pulse width at 5/10/20 ms, two-line skew, host→device latency |
 | [`2026-08-07-s3-loopback`](measurements/2026-08-07-s3-loopback/) | 2026-08-07 | loopback only, no instrument: host round trip idle vs loaded (n=10 000 each), the split-write stall, an hour of sustained load |
 | (in [dlp-io8-g](https://github.com/chrplr/dlp-io8-g)) | 2026-08-07 | scope: pulse width at 5–50 ms under three host conditions, and a head-to-head against a DLP-IO8 |
+| (in [dlp-io8-g](https://github.com/chrplr/dlp-io8-g)) | 2026-08-07 | Analog Discovery 3, streamed: pulse width at 1–50 ms, n=1000 per width |
 
 ---
 
@@ -24,19 +25,21 @@ Raw data and reproduction instructions in [`measurements/`](measurements/).
 | Output lines | 8 (D30–D37) | — |
 | Input lines | 8 (D22–D29), `INPUT_PULLUP` | — |
 | Simultaneous two-line write | **atomic**, skew < 250 µs | BBTKv3, 20 trials |
-| Pulse width bias, 5–20 ms | **−0.5 to −0.7 ms** (systematically short) | BBTKv3, 60 pulses |
-| Pulse width jitter | < 1 ms beyond quantisation | BBTKv3 |
+| Pulse width, 1–50 ms | lands in **(w−2.05, w+0.04] ms** | AD3, n=1000 per width, 6 widths |
+| Pulse width bias | **−0.37 to −0.47 ms** (systematically short) | as above |
+| Pulse width spread | **2.048 ms**, two uniform bands; parameter-free model of `millis()` | as above |
 | Host→device latency | **not measured** (~1.5 ms is an estimate; see below) | neither available method measures it |
-| Write latency vs a DLP-IO8 | within **38 µs** | scope, both write orders, n≈98 |
+| Write latency vs a DLP-IO8 | **tens of µs**; sign and magnitude not resolved | scope n≈98 and AD3 n=1631; the estimator does not cancel the host's contribution |
 | Pulse width, immunity to host load | **spread unchanged** by CPU load or real-time priority | scope, n=50 per width, 3 conditions |
 | Host round trip, idle | 2.64 ms median, 6.01 ms max | loopback, n=10 000 |
 | Host round trip, under CPU load | 3.71 ms median, **25.29 ms max** | loopback, n=10 000 |
 | Input event timestamp | few µs of the edge | firmware `micros()`, by construction |
 | Button poll (legacy path) | ≥ 5 ms, host-limited | by construction |
-| Pulse width outside 5–20 ms | **not yet measured** | block `widths` |
+| Pulse width above 50 ms | **not yet measured** | block `widths` |
+| Output port latch-up | observed once: whole port dead, protocol still answering, cleared only by a power cycle | 2026-08-07 session |
 | Trigger-code *change* atomicity | **not yet measured** | block `codechange` |
 | Split command stalls the firmware | **+17.5 ms** on a pulse in flight | block `splitwrite`, n=50 |
-| Device clock rate error | **≈ +975 ppm** (3.5 s/hour), preliminary | two `latency` runs agreeing to 6 ppm; block `drift` will settle it |
+| Device clock rate error | **≈ +900 to +975 ppm** (~3.3 s/hour) | two independent routes: `latency` runs agreeing to 6 ppm, and the 905 ppm width-vs-AD3 slope |
 | Device→host notification latency | **not yet measured** | block `respond` |
 | Closed-loop latency | **not yet measured** | block `respond` |
 | Sustained load, 1 h at 20 Hz | 2 events missing of 141 088 (0.0014 %) | block `overflow` |
@@ -78,31 +81,67 @@ run, clients should still feature-detect `CAP_ATOMIC_PORT` and prefer opcode 17
 ### Pulse width runs short — by design, and predictably
 
 The firmware times pulses itself (`g_pulse_end = millis() + width`, dropped from
-the main loop), so width does not absorb host scheduling jitter. But `millis()`
-has 1 ms resolution and truncates, so the realised width is uniform on
-**[w−1, w]**.
+the main loop), so width does not absorb host scheduling jitter. It runs short,
+and by more than the obvious model predicts.
 
-| requested | min | median | max | mean error |
-|---|---|---|---|---|
-| 5 ms | 3.75 | 4.50 | 5.00 | −0.53 ms |
-| 10 ms | 8.25 | 9.25 | 10.25 | −0.68 ms |
-| 20 ms | 18.50 | 19.50 | 20.25 | −0.69 ms |
+**A requested *w* ms pulse lands in (w−2.05, w+0.04] ms.** Measured with a
+Digilent Analog Discovery 3 at 100 kS/s, n=1000 per width:
 
-*20 pulses per width, BBTKv3 at 0.25 ms sampling.*
+| requested | min | median | max | spread | median error |
+|---|---|---|---|---|---|
+| 1 ms | 0.014 | 0.535 | 1.040 | 1.025 | −0.465 ms |
+| 2 ms | 0.048 | 1.541 | 2.057 | 2.009 | −0.459 ms |
+| 5 ms | 3.092 | 4.578 | 5.142 | 2.050 | −0.423 ms |
+| 10 ms | 8.212 | 9.611 | 10.261 | 2.049 | −0.390 ms |
+| 20 ms | 18.467 | 19.581 | 20.508 | 2.041 | −0.419 ms |
+| 50 ms | 48.196 | 49.635 | 50.239 | 2.043 | −0.367 ms |
 
 **This is a bias, not noise — it cannot be averaged away.** If a paradigm needs a
 true 5 ms pulse, request 6 ms.
 
-**Re-measured 2026-08-07** on a scope at 4 ns resolution, n=50 per width, 5 to
-50 ms: the spread is **1.9–2.0 ms**, not the 1.25–2.0 ms seen through a 0.25 ms
-instrument, and it is the same at every width.
+#### Why the spread is 2 ms, not 1
 
-That is about a millisecond more than `millis()` truncation alone accounts for.
-The likely explanation is that the pulse *onset* also lands at an arbitrary point
-within a `millis()` tick, so two independent uniform milliseconds combine to a
-~2 ms range — but that is a hypothesis fitted to the observation, not something
-measured, and the earlier claim that "genuine firmware jitter is well under a
-millisecond" was reasoning from a floor that appears to have been understated.
+Because `millis()` truncates, the obvious model says the realised width is
+uniform on [w−1, w] — a flat histogram exactly 1 ms wide. The measured spread is
+twice that, at every width from 2 ms up. The reason is that **`millis()` does not
+tick at 1 ms.**
+
+Timer0 on a 16 MHz AVR overflows every 1024 µs, and `wiring.c` carries a
+fractional accumulator (`FRACT_INC` 3, `FRACT_MAX` 125) adding a catch-up
+millisecond every ~41.7 overflows — keeping the clock accurate on average at the
+price of advancing by 2 about one time in 42. So the number of overflows needed
+to reach `millis() + w` depends on the accumulator's phase at pulse onset: for
+some phases *n* suffice, for the rest *n+1*. Each case gives a uniform band
+1024 µs wide, and the width is a mixture of two of them — **2.048 ms across**.
+
+The model has **no free parameters**; everything in it is fixed by `wiring.c` and
+the 16 MHz clock. Its sharpest prediction is the fraction of trials falling in
+the early band, which swings non-monotonically with width:
+
+| requested | measured | model |
+|---|---|---|
+| 2 ms | 2.0% | 2.4% |
+| 5 ms | 8.6% | 9.6% |
+| 10 ms | 20.9% | 21.5% |
+| 20 ms | 43.7% | 45.6% |
+| 50 ms | 14.2% | 15.1% |
+
+A two-sample Kolmogorov-Smirnov test passes at four of six widths outright, and
+at all six once a single scalar offset is removed (D = 0.015–0.033 against a
+0.043 critical value) — so what it rejects is a shift, not a shape. Fitting that
+offset across widths gives `+17.6 µs + 905 ppm × width`: the constant is the
+firmware's own gap between raising the line and reading `millis()` plus one loop
+pass to notice the end, and the 905 ppm is this board's ceramic resonator running
+slow, well inside its ±5000 ppm specification.
+
+A `micros()`-based pulse timer would remove both the bias and the doubled spread;
+nobody has needed it yet. Note that the accumulator is a property of the Arduino
+core, not of this firmware, so any `millis()`-timed pulse on any AVR board has
+the same 2 ms floor.
+
+*(An earlier BBTKv3 session, 20 pulses per width at 0.25 ms sampling, gave mean
+errors of −0.53, −0.68 and −0.69 ms at 5, 10 and 20 ms — consistent with the
+above, but too coarse to see the band structure.)*
 
 ### The width does not care what the host is doing
 
@@ -127,13 +166,42 @@ offers ~2 ms you cannot improve; that one offers 0.1 ms conditional on system
 administration. See
 [dlp-io8-g/measurements](https://github.com/chrplr/dlp-io8-g).
 
-The truncation model predicts the same bias at every width, but only 5, 10 and
-20 ms were tested. The `widths` block covers 1–200 ms, and adds a second witness:
-the box's own loopback timestamps both edges with `micros()`, at 4 µs rather
-than the instrument's 0.25 ms. A 1 ms request is the interesting case — the
-model predicts a mean of 0.5 ms and a floor at zero.
+Widths from 1 to 50 ms are now covered at n=1000 each. Above 50 ms is still
+untested, though the model has no width-dependent term and there is no reason to
+expect a change. A second witness remains available and unused: the box's own
+loopback timestamps both edges with `micros()`, at 4 µs rather than an external
+instrument's resolution, which would test the model against the device's own
+clock rather than against the host's.
 
-A `micros()`-based pulse timer would remove the bias; nobody has needed it yet.
+### The output port can fail silently, and serial will not tell you
+
+Observed once, on 2026-08-07, part-way through a measurement run after roughly
+19 000 pulses: **the entire output port stopped driving.** What makes it worth
+recording is the failure signature.
+
+| check | result |
+|---|---|
+| `get_info` (opcode 1) | answered normally — version 1, caps 0x03 |
+| `set_port(0x01)` (opcode 17, no pulse machinery) | nothing on the line |
+| `set_port(0xFF)` | nothing on any line — the whole port |
+| DTR reset into the bootloader | **did not recover it** |
+| unplug and replug USB | recovered it completely |
+
+A reset re-runs `setup()`, including `pinMode(OUT_PINS[i], OUTPUT)` on all eight
+lines, and that was not enough; only removing power was. That is the signature of
+I/O latch-up rather than firmware state or permanent damage. The cause is not
+known — nothing was connected to the line but a high-impedance instrument input,
+and the same wiring had run for hours beforehand. It is reported as an
+observation, not as a characterised failure mode.
+
+**The operational consequence does not depend on the cause.** A pre-flight check
+that only talks to the box over serial reports a perfectly healthy device while
+no triggers whatsoever reach the amplifier — an entire session with no usable
+event markers, discovered in analysis. Any check worth running must observe the
+line **electrically**. This box can do that by itself: with D30 jumpered to D22,
+pulse the line and confirm the input event arrives. If the port is dead the box
+fails to see its own edge, and the check fails before the participant is in the
+scanner rather than after.
 
 ---
 
