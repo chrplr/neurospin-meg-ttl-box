@@ -17,6 +17,22 @@ func (b *Box) SetLowMask(mask uint8) error {
 	return b.tx([]byte{opSetLowMask, mask})
 }
 
+// SetPortMask assigns all 8 output lines at once: every line set in mask goes
+// HIGH and every line not set goes LOW, in a single AVR port write.
+//
+// This is the correct way to change a trigger code. The alternative — a
+// [Box.SetHighMask] followed by a [Box.SetLowMask] — leaves the port at
+// (previous | mask) between the two commands, for as long as a USB frame. That
+// intermediate is a valid-looking but wrong code, and an amplifier sampling at
+// 1 kHz can latch it.
+//
+// The opcode exists only on firmware advertising [CapAtomicPort]. Older
+// firmware ignores it silently and leaves the lines unchanged, so there is no
+// error to catch: feature-detect with [Box.GetInfo] first.
+func (b *Box) SetPortMask(mask uint8) error {
+	return b.tx([]byte{opSetPortMask, mask})
+}
+
 // SetHighOnLine drives a single output line (0–7) HIGH persistently.
 func (b *Box) SetHighOnLine(line uint8) error {
 	if line > 7 {

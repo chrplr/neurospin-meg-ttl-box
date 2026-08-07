@@ -5,7 +5,9 @@
 package ttlbox
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"go.bug.st/serial"
@@ -106,6 +108,20 @@ func (b *Box) ensureOpen() error {
 	return nil
 }
 
+// SendRaw writes bytes straight to the device, with no interpretation.
+//
+// It exists for two narrow purposes: reaching a firmware opcode this client
+// does not yet wrap, and deliberately writing a command in more than one call
+// to study how the firmware copes (the measurement harness does exactly that —
+// the firmware blocks in its argument read, so a command split across two USB
+// frames stalls the main loop). Ordinary code should use the typed methods,
+// which cannot desynchronise the byte stream.
+//
+// In particular, never split a command across two SendRaw calls in production
+// code: an opcode whose argument has not arrived stops the firmware sampling
+// its inputs until it does.
+func (b *Box) SendRaw(data []byte) error { return b.tx(data) }
+
 func (b *Box) tx(data []byte) error {
 	if err := b.ensureOpen(); err != nil {
 		return err
@@ -114,17 +130,39 @@ func (b *Box) tx(data []byte) error {
 	return err
 }
 
+// rxExact reads exactly n bytes from the device.
+//
+// A single Read is not enough: the firmware emits multi-byte replies with one
+// Serial.write per byte, and there is no guarantee the USB stack delivers them
+// in one packet. Treating a short read as a timeout would turn an ordinary
+// packet split into a spurious ErrTimeout — harmless for a one-off query, but
+// it silently truncates a latency distribution when the reply is a 6-byte
+// timestamped event polled thousands of times.
+//
+// The loop ends when the port signals no more data: go.bug.st/serial reports a
+// read timeout as (0, nil), and the in-memory test port reports exhaustion as
+// io.EOF. Either way a short total is reported as ErrTimeout, as before.
 func (b *Box) rxExact(n int) ([]byte, error) {
 	if err := b.ensureOpen(); err != nil {
 		return nil, err
 	}
 	buf := make([]byte, n)
-	got, err := b.port.Read(buf)
-	if err != nil {
-		return nil, fmt.Errorf("ttlbox: read: %w", err)
+	got := 0
+	for got < n {
+		m, err := b.port.Read(buf[got:])
+		got += m
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, fmt.Errorf("ttlbox: read: %w", err)
+		}
+		if m == 0 {
+			break
+		}
 	}
 	if got != n {
 		return nil, fmt.Errorf("%w: expected %d bytes, got %d", ErrTimeout, n, got)
 	}
-	return buf[:got], nil
+	return buf, nil
 }

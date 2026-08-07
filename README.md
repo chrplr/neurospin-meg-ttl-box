@@ -10,10 +10,11 @@ The system replaces a legacy parallel port with an Arduino Mega 2560 connected o
 See [`arduino/README.md`](arduino/README.md) for hardware setup, pin mapping, and flashing instructions.
 
 See [`TIMING.md`](TIMING.md) for what the device can and cannot do, measured on
-hardware: trigger codes are atomic to within 250 µs, pulse widths run
-systematically 0.5–0.7 ms **short**, host→device latency is ~1.5 ms, and
-reaction-time accuracy is sub-millisecond rather than microsecond. Raw captures
-in [`measurements/`](measurements/).
+hardware: a simultaneous two-line write is atomic to within 250 µs, pulse widths
+run systematically 0.5–0.7 ms **short**, host→device latency is ~1.5 ms, and
+reaction-time accuracy is sub-millisecond rather than microsecond. It also marks
+what is *not* yet measured, and names the block that measures it. Raw data and
+the measurement harness are in [`measurements/`](measurements/).
 
 The current repository is a Go port of [meg_USBio](https://github.com/mirian22ainar/meg_USBio), which provides the original Python client and Arduino firmware.  
 
@@ -126,6 +127,52 @@ mask, rt, err := box.WaitForButton(ctx)
 fmt.Println(ttlbox.DecodeMask(mask), rt)
 ```
 
+### Protocol v1: atomic codes and timestamped inputs
+
+Firmware advertising protocol v1 adds two things worth having. Feature-detect
+them — older firmware ignores the opcodes silently, so there is no error to
+catch.
+
+```go
+info, err := box.GetInfo()
+if err != nil {
+    // ErrLegacyFirmware when the device stays silent: firmware older than
+    // protocol v1 ignores the opcode, so silence is the only signature.
+    log.Fatal(err)
+}
+
+if info.AtomicPort() {
+    // Change the whole trigger code in one AVR port write, so no
+    // intermediate value ever reaches the wires.
+    box.SetPortMask(0b00000110)
+}
+
+if info.Timestamps() {
+    clock := box.NewClock()
+    clock.Sample(20)                // host<->device offset, best of 20 round trips
+
+    box.ClearEvents()               // re-seed at the start of a trial
+    r, _ := box.GetEvent()
+    if r.Present {
+        // When the edge happened, not when you got round to asking.
+        onset := clock.EventHost(r.Event)
+        fmt.Println(ttlbox.DecodeMask(r.Event.Mask), onset)
+    }
+    if r.Overflow {
+        // Transitions were lost, not delayed: the trial is wrong, not late.
+    }
+}
+```
+
+`Clock` fits offset *and* rate over repeated samples, and `Clock.Fit()` reports
+the residuals — which is the honest accuracy of a device→host conversion, rather
+than the device's 4 µs tick.
+
+**Build a command and write it once.** The firmware blocks in an unbounded spin
+waiting for an argument byte, and samples no inputs while it waits. The typed
+methods above all write in one call; `SendRaw` is the only way to break this and
+is documented as a diagnostic.
+
 ## CLI usage
 
 ```
@@ -143,6 +190,26 @@ Commands:
   buttons read                 Read current button state
   buttons wait [--timeout ms]  Block until a button is pressed; print RT
 ```
+
+### `ttlbox-timing`
+
+A second binary runs the measurement blocks behind [`TIMING.md`](TIMING.md).
+Several need no instrument beyond a `D30 → D22` jumper, and are worth running on
+a stimulus PC before it is used for an experiment — host→device latency in
+particular depends on the host, not the box.
+
+```bash
+go install github.com/neurospin/neurospin-meg-ttl-box/cmd/ttlbox-timing@latest
+
+ttlbox-timing latency --pulses 10000 --isi 20   # write latency, with the tail
+ttlbox-timing splitwrite                        # the split-write stall
+ttlbox-timing widths -n                         # any block: -n prints the plan
+```
+
+Every block writes a CSV of raw per-trial rows and summarises nothing; read them
+with [`measurements/analyse-timing.py`](measurements/analyse-timing.py). See
+[`measurements/README.md`](measurements/README.md) for the wiring and the
+sessions that need a Black Box ToolKit.
 
 ## API improvements over the Python version
 

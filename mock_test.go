@@ -37,3 +37,40 @@ func newMockBox(rxData []byte, opts ...Option) (*Box, *bytes.Buffer) {
 	}
 	return b, tx
 }
+
+// chunkedPort returns its receive data in preset chunks, one per Read, to
+// reproduce a multi-byte reply split across USB packets. Once the chunks run
+// out it reports (0, nil), which is how go.bug.st/serial signals a read
+// timeout — so a test can also make a reply arrive incomplete.
+type chunkedPort struct {
+	chunks [][]byte
+	tx     *bytes.Buffer
+}
+
+func (m *chunkedPort) Read(p []byte) (int, error) {
+	if len(m.chunks) == 0 {
+		return 0, nil
+	}
+	c := m.chunks[0]
+	n := copy(p, c)
+	if n < len(c) {
+		m.chunks[0] = c[n:]
+	} else {
+		m.chunks = m.chunks[1:]
+	}
+	return n, nil
+}
+
+func (m *chunkedPort) Write(p []byte) (int, error) { return m.tx.Write(p) }
+func (m *chunkedPort) Close() error                { return nil }
+
+// newChunkedBox returns a Box whose port hands back one chunk per Read.
+func newChunkedBox(chunks ...[]byte) (*Box, *bytes.Buffer) {
+	tx := &bytes.Buffer{}
+	b := &Box{
+		port:         &chunkedPort{chunks: chunks, tx: tx},
+		resetDelay:   0,
+		pollInterval: 0,
+	}
+	return b, tx
+}
