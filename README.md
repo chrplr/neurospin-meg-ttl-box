@@ -20,8 +20,6 @@ The current repository is a Go port of [meg_USBio](https://github.com/mirian22ai
 
 The ttl-box and its Python API were designed and implemented by **[Mirian Aïnar](https://www.linkedin.com/in/mirian-ainar/)** under the supervision of **[Christophe Pallier](http://www.pallier.org)** with support from **Marie-France Fourcade** and **Jérémy Bernard** (CEA Neurospin TEAM-stim). 
 
-> [!WARNING]
-> While we have battle-tested the Python version, this one needs testing. Please submit bug reports and suggestions to https://github.com/chrplr/neurospin-meg-ttl-box/issues
 
 
 ## Installation
